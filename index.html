@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Mise en Place — Chef Tom's Sterrenkeuken</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#14181B">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mise en Place">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <style>
   :root{
     --bg-0:#14181B;
@@ -47,12 +55,23 @@
   }
   .badge{
     background:var(--bg-2); border:1px solid var(--steel-line); border-radius:8px;
-    padding:6px 10px; text-align:center; min-width:64px;
+    padding:6px 10px; text-align:center; min-width:64px; position:relative;
   }
   .badge .lbl{font-size:0.6rem; color:var(--cream-dim); letter-spacing:1px;}
   .badge .val{font-size:1.15rem; font-weight:900; color:var(--copper); line-height:1.1;}
   #timerBadge.warn .val{color:var(--red); animation:pulse 1s infinite;}
   @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
+  .scorepop{
+    position:absolute; left:50%; top:-2px; transform:translate(-50%,0) scale(0.8);
+    font-size:0.78rem; font-weight:900; color:var(--green);
+    text-shadow:0 2px 6px rgba(0,0,0,0.6); pointer-events:none; z-index:5;
+    animation:scorePopUp 0.95s ease-out forwards;
+  }
+  @keyframes scorePopUp{
+    0%{ opacity:0; transform:translate(-50%,6px) scale(0.75); }
+    18%{ opacity:1; transform:translate(-50%,-6px) scale(1.1); }
+    100%{ opacity:0; transform:translate(-50%,-30px) scale(0.95); }
+  }
   #timerDial{
     position:relative; width:58px; height:58px; border-radius:50%;
     margin:2px auto 0; background:#1B2023; border:2px solid var(--steel-line);
@@ -208,6 +227,7 @@
     display:flex; align-items:center; justify-content:center; z-index:100;
     padding:20px;
   }
+  .screen.peek{ background:rgba(10,12,13,0.5); }
   .screen.hide{ display:none; }
   .card{
     background:var(--bg-1); border:1px solid var(--steel-line); border-radius:14px;
@@ -274,12 +294,12 @@
     <h1 class="shout">👨‍🍳 Chef Tom</h1>
     <div class="sub">🎂 Gefeliciteerd met je verjaardag! 🎁 jouw eigen sterrenkeuken.</div>
     <p>Sleep ingrediënten op de werkbank en vul volledige rijen of kolommen om ze weg te werken.<br>
-    ↻ Draai een ingrediënt met de ↻-knop op zijn kaart voordat je sleept.</p>
+    Draai een ingrediënt met ↻-knop.</p>
     <label style="font-size:0.75rem; color:var(--cream-dim); letter-spacing:1px;">⏱ SKILL LEVEL</label>
     <select id="durationSelect">
-      <option value="180" data-mode="easy">Easy Lunch — 3 minuten</option>
-      <option value="300" data-mode="easy" selected>Dinner — 5 minuten</option>
-      <option value="360" data-mode="hard">Hard: Michelin ster niveau — 6 minuten</option>
+      <option value="180" data-mode="easy">Easy: Lunch</option>
+      <option value="300" data-mode="easy" selected>Medium: 3 gangen Diner</option>
+      <option value="360" data-mode="hard">Hard: Michelin Ster 6 gangen</option>
     </select>
     <p><b>Productgroepen en punten:</b><br>
     🔴 Rood: Vlees 🥩 → Bonus punten × 3<br>
@@ -288,8 +308,8 @@
     🟢 Groen: 🥬 Groenten 🍅 tomaat 🌿 kruiden, 🍋 fruit 🍄 paddenstoel</p>
     <p>⚠️ Strafregel: Als een rij of kolom uit verschillende productgroepen door elkaar bestaat, worden je punten gehalveerd.</p>
     <p>👨‍🍳 Chef-bonus – mag overal geplaatst worden.<br>
-    🍽️ Emoticon-bord – mag ook overal geplaatst worden.</p>
-    <button class="bigbtn" id="startBtn">Start de dienst, Chef Tom</button>
+    🍽️ Bord – mag ook overal geplaatst worden.</p>
+    <button class="bigbtn" id="startBtn">Start Mise-en-place</button>
   </div>
 </div>
 
@@ -387,6 +407,7 @@ var boardWrapEl=document.getElementById('boardWrap');
 var trayEl=document.getElementById('tray');
 var ghostEl=document.getElementById('ghost');
 var scoreVal=document.getElementById('scoreVal');
+var scoreBadgeEl=document.getElementById('scoreBadge');
 var timerVal=document.getElementById('timerVal');
 var timerBadge=document.getElementById('timerBadge');
 var timerFace=document.getElementById('timerFace');
@@ -695,7 +716,7 @@ function clearLines(){
 
   var comboBonus=total>1 ? (total-1)*15 : 0;
   var finalPoints=Math.floor((sumPoints+comboBonus)*globalMult);
-  addScore(finalPoints);
+  addScore(finalPoints, !(hadBonus||hadPenalty));
   state.linesCleared+=total;
 
   setTimeout(function(){
@@ -712,7 +733,7 @@ function clearLines(){
     sfxBonus(bestBonusMult);
   }
   if(hadPenalty){
-    spawnSplash('penalty', '½', 'GEMENGD — STRAF', hadBonus?620:80);
+    spawnSplash('penalty', '½', 'GEMENGD — STRAF (+'+finalPoints+')', hadBonus?620:80);
     sfxPenalty();
   }
   if(hadBonus && hadPenalty){
@@ -727,9 +748,17 @@ function clearLines(){
   return total;
 }
 
-function addScore(n){
+function addScore(n, showPop){
   state.score+=n;
   scoreVal.textContent=state.score;
+  if(showPop!==false && n>0) spawnScorePop(n);
+}
+function spawnScorePop(n){
+  var el=document.createElement('div');
+  el.className='scorepop';
+  el.textContent='+'+n;
+  scoreBadgeEl.appendChild(el);
+  setTimeout(function(){ el.remove(); }, 950);
 }
 
 /* ============ DRAG & DROP ============ */
@@ -1076,6 +1105,7 @@ function startRound(){
   multStrip.classList.remove('on');
   startScreen.classList.add('hide');
   endScreen.classList.add('hide');
+  endScreen.classList.remove('peek');
   scheduleNextEvent();
   scheduleChefGift();
   speak('Gefeliciteerd gezel-meester chef Tom! De mies an plaz service begint.');
@@ -1102,10 +1132,23 @@ function endRound(timeUp){
   else if(stars===1){ msg='Een degelijke dienst. Volgende keer nog scherper op tempo, Chef Tom.'; }
   else { msg='Pittige dienst. Bouw wat meer ruimte in op de werkbank, Chef Tom.'; }
   document.getElementById('endMsg').textContent=msg;
-  endScreen.classList.remove('hide');
-  if(timeUp){ sfxRoundWin(); speak(stars>=2?'Uitstekende dienst, Chef Tom!':'Dienst voltooid, Chef Tom.'); }
-  else { sfxGameOver(); speak('De werkbank loopt vast, service onderbroken, Chef Tom.'); }
-  if(navigator.vibrate) navigator.vibrate(timeUp?[60,40,60,40,120]:[200]);
+
+  if(timeUp){
+    endScreen.classList.remove('peek');
+    endScreen.classList.remove('hide');
+    sfxRoundWin();
+    speak(stars>=2?'Uitstekende dienst, Chef Tom!':'Dienst voltooid, Chef Tom.');
+    if(navigator.vibrate) navigator.vibrate([60,40,60,40,120]);
+  } else {
+    sfxGameOver();
+    speak('De werkbank loopt vast, service onderbroken, Chef Tom.');
+    if(navigator.vibrate) navigator.vibrate([200]);
+    showTicket('neg','WERKBANK LOOPT VAST','Geen enkel ingrediënt past meer op de werkbank.','Chaos in de keuken — dienst onderbroken.', 3000);
+    setTimeout(function(){
+      endScreen.classList.add('peek');
+      endScreen.classList.remove('hide');
+    }, 3000);
+  }
 }
 
 /* ============ UI CONTROLS ============ */
